@@ -2,47 +2,51 @@
 	MIT License http://www.opensource.org/licenses/mit-license.php
 	Author Tobias Koppers @sokra
 */
-var csso = require("csso");
-var SourceMapGenerator = require("source-map").SourceMapGenerator;
+var css = require("css");
+var SourceNode = require("source-map").SourceNode;
+var SourceMapConsumer = require("source-map").SourceMapConsumer;
 var loaderUtils = require("loader-utils");
 
 module.exports = function(content, map) {
 	this.cacheable && this.cacheable();
 	var result = [];
-	var queryString = this.query || "";
+	var cssRequest = loaderUtils.getRemainingRequest(this);
 	var query = loaderUtils.parseQuery(this.query);
 	var root = query.root;
 	var forceMinimize = query.minimize;
 	var importLoaders = parseInt(query.importLoaders, 10) || 0;
 	var minimize = typeof forceMinimize !== "undefined" ? !!forceMinimize : (this && this.minimize);
-	var tree = csso.parse(content, "stylesheet");
-	if(tree && minimize) {
-		tree = csso.compress(tree, query.disableStructuralMinification);
-		tree = csso.cleanInfo(tree);
-	}
+	var genSourceMap = query.sourceMap;
 
-	if(tree) {
-		var imports = extractImports(tree);
-		annotateUrls(tree);
+	var tree = css.parse(content, {
+		source: cssRequest
+	});
 
-		imports.forEach(function(imp) {
-			if(!loaderUtils.isUrlRequest(imp.url)) {
-				result.push("exports.push([module.id, " + JSON.stringify("@import url(" + imp.url + ");") + ", " + JSON.stringify(imp.media.join("")) + "]);");
-			} else {
-				var importUrl = "-!" +
-					this.loaders.slice(
-						this.loaderIndex,
-						this.loaderIndex + 1 + importLoaders
-					).map(function(x) { return x.request; }).join("!") + "!" +
-					loaderUtils.urlToRequest(imp.url);
-				result.push("require(" + JSON.stringify(require.resolve("./mergeImport")) + ")(exports, require(" + JSON.stringify(importUrl) + "), " + JSON.stringify(imp.media.join("")) + ");");
-			}
-		}, this);
-	}
+	var imports = extractImports(tree.stylesheet);
+	annotateUrls(tree);
 
-	var css = JSON.stringify(tree ? csso.translate(tree) : "");
+	imports.forEach(function(imp) {
+		if(!loaderUtils.isUrlRequest(imp.url)) {
+			result.push("exports.push([module.id, " + JSON.stringify("@import url(" + imp.url + ");") + ", " + JSON.stringify(imp.media.join("")) + "]);");
+		} else {
+			var importUrl = "-!" +
+				this.loaders.slice(
+					this.loaderIndex,
+					this.loaderIndex + 1 + importLoaders
+				).map(function(x) { return x.request; }).join("!") + "!" +
+				loaderUtils.urlToRequest(imp.url);
+			result.push("require(" + JSON.stringify(require.resolve("./mergeImport")) + ")(exports, require(" + JSON.stringify(importUrl) + "), " + JSON.stringify(imp.media.join(" ")) + ");");
+		}
+	}, this);
+
+
+	var cssResult = css.stringify(tree, {
+		compress: !!minimize,
+		sourcemap: genSourceMap
+	});
+	var cssString = JSON.stringify(genSourceMap ? cssResult.code : cssResult);
 	var uriRegExp = /%CSSURL\[%(.*?)%\]CSSURL%/g;
-	css = css.replace(uriRegExp, function(str) {
+	cssString = cssString.replace(uriRegExp, function(str) {
 		var match = /^%CSSURL\[%(["']?(.*?)["']?)%\]CSSURL%$/.exec(JSON.parse('"' + str + '"'));
 		var url = loaderUtils.parseString(match[2]);
 		if(!loaderUtils.isUrlRequest(match[2], root)) return JSON.stringify(match[1]).replace(/^"|"$/g, "");
@@ -58,107 +62,72 @@ module.exports = function(content, map) {
 		}
 		return "\"+require(" + JSON.stringify(loaderUtils.urlToRequest(url, root)) + ")+\"";
 	});
-	if(query.sourceMap && !minimize) {
-		var cssRequest = loaderUtils.getRemainingRequest(this);
+	if(genSourceMap) {
 		var request = loaderUtils.getCurrentRequest(this);
-		if(!map) {
-			var sourceMap = new SourceMapGenerator({
+
+		if(map) {
+			var node = SourceNode.fromStringWithSourceMap(cssResult.code, new SourceMapConsumer(cssResult.map));
+			node.applySourceMap(map);
+			map = node.toStringWithSourceMap({
 				file: request
-			});
-			var lines = content.split("\n").length;
-			for(var i = 0; i < lines; i++) {
-				sourceMap.addMapping({
-					generated: {
-						line: i+1,
-						column: 0
-					},
-					source: cssRequest,
-					original: {
-						line: i+1,
-						column: 0
-					},
-				});
-			}
-			sourceMap.setSourceContent(cssRequest, content);
-			map = JSON.stringify(sourceMap.toJSON());
-		} else if(typeof map !== "string") {
-			map = JSON.stringify(map);
+			}).map.toString();
+		} else {
+			map = JSON.stringify(cssResult.map);
 		}
-		result.push("exports.push([module.id, " + css + ", \"\", " + map + "]);");
+		result.push("exports.push([module.id, " + cssString + ", \"\", " + map + "]);");
 	} else {
-		result.push("exports.push([module.id, " + css + ", \"\"]);");
+		result.push("exports.push([module.id, " + cssString + ", \"\"]);");
 	}
 	return "exports = module.exports = require(" + JSON.stringify(require.resolve("./cssToString")) + ")();\n" +
 		result.join("\n");
 }
 
+function parseImport(str) {
+	var m = /^\s*url\s*\(([^\)]+|\s*"[^"]"\s*|\s*'[^']'\s*)\)\s*(.*)$/i.exec(str);
+	if(!m) return;
+	return {
+		url: loaderUtils.parseString(m[1].trim()),
+		media: m[2].split(/\s+/)
+	};
+}
+
 function extractImports(tree) {
 	var results = [];
-	var removes = [];
-	for(var i = 1; i < tree.length; i++) {
-		var rule = tree[i];
-		if(rule[0] === "atrules" &&
-			rule[1][0] === "atkeyword" &&
-			rule[1][1][0] === "ident" &&
-			rule[1][1][1] === "import") {
-			var imp = {
-				url: null,
-				media: []
-			};
-			for(var j = 2; j < rule.length; j++) {
-				var item = rule[j];
-				if(item[0] === "string") {
-					imp.url = loaderUtils.parseString(item[1]);
-				} else if(item[0] === "uri") {
-					imp.url = item[1][0] === "string" ? loaderUtils.parseString(item[1][1]) : item[1][1];
-				} else if(item[0] === "ident" && item[1] !== "url") {
-					imp.media.push(csso.translate(item));
-				} else if(item[0] !== "s" || imp.media.length > 0) {
-					imp.media.push(csso.translate(item));
-				}
-			}
-			while(imp.media.length > 0 &&
-				/^\s*$/.test(imp.media[imp.media.length-1]))
-				imp.media.pop();
-			if(imp.url !== null) {
-				results.push(imp);
-				removes.push(i);
-			}
+	for(var i = 0; i < tree.rules.length; i++) {
+		var rule = tree.rules[i];
+		if(rule.type === "import") {
+			var imp = parseImport(rule.import);
+			if(!imp) continue;
+			results.push(imp);
+			tree.rules.splice(i, 1);
+			i--;
 		}
 	}
-	removes.reverse().forEach(function(i) {
-		tree.splice(i, 1);
-	});
 	return results;
 }
+
 function annotateUrls(tree) {
-	function iterateChildren() {
-		for(var i = 1; i < tree.length; i++) {
-			annotateUrls(tree[i]);
+	function iterateChildren(children) {
+		for(var i = 0; i < children.length; i++) {
+			annotateUrls(children[i]);
 		}
 	}
-	switch(tree[0]) {
-	case "stylesheet": return iterateChildren();
-	case "ruleset": return iterateChildren();
-	case "block": return iterateChildren();
-	case "atruleb": return iterateChildren();
-	case "atruler": return iterateChildren();
-	case "atrulers": return iterateChildren();
-	case "declaration": return iterateChildren();
-	case "value": return iterateChildren();
-	case "uri":
-		for(var i = 1; i < tree.length; i++) {
-			var item = tree[i];
-			switch(item[0]) {
-			case "ident":
-			case "raw":
-				item[1] = "%CSSURL[%" + item[1] + "%]CSSURL%";
-				return;
-			case "string":
-				item[1] = "%CSSURL[%" + item[1] + "%]CSSURL%";
-				return;
-			}
-		}
+	switch(tree.type) {
+	case "stylesheet": return iterateChildren(tree.stylesheet.rules);
+	case "rule": return iterateChildren(tree.declarations);
+	case "document": return iterateChildren(tree.rules);
+	case "font-face": return iterateChildren(tree.declarations);
+	case "host": return iterateChildren(tree.rules);
+	case "keyframes": return iterateChildren(tree.keyframes);
+	case "keyframe": return iterateChildren(tree.declarations);
+	case "media": return iterateChildren(tree.rules);
+	case "page": return iterateChildren(tree.declarations);
+	case "supports": return iterateChildren(tree.rules);
+	case "declaration":
+		tree.value = tree.value.replace(/url\s*\(([^\)]+|\s*"[^"]"\s*|\s*'[^']'\s*)\)/ig, function(match) {
+			var m = /^url\s*\(([^\)]+|\s*"[^"]"\s*|\s*'[^']'\s*)\)$/i.exec(match);
+			return "url(%CSSURL[%" + m[1].trim() + "%]CSSURL%)";
+		});
 	}
 }
 
