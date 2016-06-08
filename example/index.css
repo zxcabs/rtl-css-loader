@@ -1,0 +1,10 @@
+@import "./second.css";
+
+body {
+    background: #eee;
+}
+
+#root {
+    position: absolute;
+    left: 50px;
+}
