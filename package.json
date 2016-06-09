@@ -1,6 +1,6 @@
 {
   "name": "rtl-css-loader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Romain Berger",
   "description": "rtl css loader module for webpack",
   "engines": {
