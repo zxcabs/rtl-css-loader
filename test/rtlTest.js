@@ -4,23 +4,23 @@ var test = require("./helpers").test;
 var testMinimize = require("./helpers").testMinimize;
 
 describe("rtlcss", function() {
-    var _document
-    before(() => {
-        _document = global.document
+    var _document;
+    before(function() {
+        _document = global.document;
         global.document = {
             getElementsByTagName: function() {
                 return [{
                     getAttribute: function() {
-                        return 'rtl'
+                        return 'rtl';
                     }
                 }];
             }
         };
-    })
+    });
 
-    after(() => {
-        global.document = _document
-    })
+    after(function() {
+        global.document = _document;
+    });
 
     test("basic property", ".class { right: 10px; }", [
         [1, ".class { left: 10px; }", ""]
@@ -30,5 +30,5 @@ describe("rtlcss", function() {
     ]);
     test("ignore", ".class { /*rtl:begin:ignore*/border-right: 10px;/*rtl:end:ignore*/ left: 10px; }", [
         [1, ".class {border-right: 10px; right: 10px; }", ""]
-    ])
+    ]);
 });
