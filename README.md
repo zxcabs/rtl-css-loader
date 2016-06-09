@@ -1,4 +1,4 @@
-# (rtl) css loader for webpack
+# (rtl) css loader for webpack [![Build Status](https://img.shields.io/travis/romainberger/rtl-css-loader/master.svg?style=flat-square)](https://travis-ci.org/romainberger/rtl-css-loader)
 
 Fork of the [css loader](https://github.com/webpack/css-loader), improved for rtl.
 
