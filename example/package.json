@@ -1,10 +1,10 @@
 {
-  "name": "rtl-loader-example",
+  "name": "rtl-css-loader-example",
   "version": "1.0.0",
   "description": "",
   "scripts": {
     "start": "python -m SimpleHTTPServer",
-    "webpack": "webpack --watch"
+    "webpack": "webpack"
   },
   "author": "Romain Berger <romain@romainberger.com>",
   "license": "MIT",
