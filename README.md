@@ -8,6 +8,8 @@ Uses [rtlcss](https://github.com/MohammadYounes/rtlcss) under the hood.
 
 **Warning** This module should only be used for development. The processing of your css being done server-side, the bundle will include both the regular css and the rtl version, which can make your bundle a lot bigger. If you're using the `extract-text-webpack-plugin`, check out the [webpack-rtl-plugin](https://github.com/romainberger/webpack-rtl-plugin).
 
+Check out the [webpack-rtl-example](https://github.com/romainberger/webpack-rtl-example) to see an example of an app using the rtl-css-loader and webpack-rtl-plugin.
+
 ## installation
 
 `npm install rtl-css-loader --save-dev`
