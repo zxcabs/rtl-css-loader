@@ -1,6 +1,6 @@
 {
   "name": "@zxcabs/rtl-css-loader",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Romain Berger, Evegny Reznichenko",
   "description": "rtl css loader module for webpack",
   "engines": {
